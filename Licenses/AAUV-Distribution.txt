@@ -1,0 +1,29 @@
+AAUV distribution licensing
+
+AAUV's own source files and the migrated PendingBot/PendingNet code are
+available under the MIT License in LICENSE. Their original copyright and
+permission notices accompany the source and application.
+
+The iOS Packet Tunnel extension statically combines AAUV's tunnel adapter
+with sing-box Libbox. This combined extension is distributed under the
+GNU General Public License, version 3 or any later version. The complete
+GPLv3 text is included as GPL-3.0.txt. The upstream sing-box copyright and
+additional name/association notice are included as sing-box-LICENSE.
+
+The Mac sing-box executable is distributed under GPL-3.0-or-later, with
+the same upstream notices. AAUV starts it as a separate process.
+
+The matching AAUV source archive includes the application and extension
+source, build scripts, fixed-version dependency sources, license notices,
+and dependency inventory. The Mac package includes this archive alongside
+AAUV.app.
+
+The optional GitHub Copilot CLI runtime is distributed as unmodified
+independent executables and libraries. Its own license is included as
+copilot-cli-arm64-LICENSE and copilot-cli-x86_64-LICENSE in Mac builds that
+contain the respective runtime. AAUV communicates with that runtime
+through its separately launched bridge process. The Copilot Go SDK
+license is included as copilot-sdk-LICENSE.
+
+Other dependency licenses and source locations are described in
+THIRD_PARTY.md and the remaining license files.

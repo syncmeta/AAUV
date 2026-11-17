@@ -1,0 +1,32 @@
+.DS_Store
+build/
+DerivedData/
+Vendor/
+.build/
+com.apple.DeveloperTools/
+xcuserdata/
+AAUV.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/configuration/mirrors.json
+
+# Local caches and development settings
+__pycache__/
+*.pyc
+.env
+.env.*
+!.env.example
+
+# Local credentials, provisioning, application data and distributable builds
+*.p12
+*.pfx
+*.key
+*.mobileprovision
+*.provisionprofile
+*.sqlite
+*.sqlite3
+*.sqlite3-*
+*.db
+*.aauv
+*.aauv.json
+*.xcarchive/
+*.xcresult/
+*.ipa
+*.dmg
