@@ -161,6 +161,18 @@ struct SettingsView: View {
                     Section("iCloud") {
                         Toggle("iCloud 自动同步", isOn: $cloudSyncEnabled)
                         Text(cloudSync.status).font(.footnote)
+                        if let checked = cloudSync.lastCheckCompletedAt {
+                            HStack {
+                                Text("上次检查")
+                                Text(checked, format: .dateTime.month().day().hour().minute())
+                            }.font(.footnote).foregroundStyle(.secondary)
+                        }
+                        if let received = cloudSync.lastRemoteUpdateAt {
+                            HStack {
+                                Text("上次接收更新")
+                                Text(received, format: .dateTime.month().day().hour().minute())
+                            }.font(.footnote).foregroundStyle(.secondary)
+                        }
                         Text("同步会话、附件、机器人、提示词、个人资料及保存的服务和模型列表。Key 和登录凭证只保存在本机。")
                             .font(.footnote).foregroundStyle(.secondary)
                         if let issue = store.publicPreferencesError {

@@ -29,6 +29,7 @@ final class CloudSync: NSObject, CKSyncEngineDelegate {
     private let sleepBeforeRetry: @MainActor (Duration) async throws -> Void
     private let foregroundNow: @MainActor () -> ContinuousClock.Instant
     @ObservationIgnored private var engine: CKSyncEngine?
+    @ObservationIgnored private var zoneCatchUp: CloudZoneCatchUp?
     @ObservationIgnored private var cancellation: Task<Void, Never>?
     @ObservationIgnored private var database: CKDatabase?
     @ObservationIgnored private var systemFields: [String: Data] = [:]
@@ -36,6 +37,8 @@ final class CloudSync: NSObject, CKSyncEngineDelegate {
     @ObservationIgnored private var uploadDeferrals = CloudUploadDeferrals()
     private(set) var status = "iCloud 同步已关闭"
     private(set) var busy = false
+    private(set) var lastCheckCompletedAt: Date?
+    private(set) var lastRemoteUpdateAt: Date?
     @ObservationIgnored private var reconcileWhenIdle = false
     @ObservationIgnored private var foregroundCatchUpGeneration: Int?
     @ObservationIgnored private var lastSyncStarted: ContinuousClock.Instant?
@@ -100,6 +103,10 @@ final class CloudSync: NSObject, CKSyncEngineDelegate {
         store.file.deletingLastPathComponent().appending(path: "cloudkit-zone-state")
     }
 
+    private var zoneCursorURL: URL {
+        store.file.deletingLastPathComponent().appending(path: "cloudkit-zone-cursor.json")
+    }
+
     private func setZoneState(_ state: ZoneState, owner: String? = nil) throws {
         guard let owner = owner ?? checkpoint?.owner else { throw CocoaError(.fileWriteUnknown) }
         let next = Checkpoint(zone: state, owner: owner)
@@ -124,6 +131,8 @@ final class CloudSync: NSObject, CKSyncEngineDelegate {
     @discardableResult
     private func detach(_ message: String) -> Task<Void, Never>? {
         let running = engine
+        let catchUp = zoneCatchUp?.cancel()
+        zoneCatchUp = nil
         let assets = uploads
         engine = nil
         database = nil
@@ -135,12 +144,13 @@ final class CloudSync: NSObject, CKSyncEngineDelegate {
         uploadDeferrals = CloudUploadDeferrals()
         attachmentRepairStatus = nil
         status = message
-        guard let running else { return cancellation }
+        guard running != nil || catchUp != nil else { return cancellation }
         // Delegate callbacks must return before an in-flight engine can finish cancelling.
         let previous = cancellation
         let next = Task {
             await previous?.value
-            await running.cancelOperations()
+            await running?.cancelOperations()
+            _ = try? await catchUp?.value
             withExtendedLifetime(assets) {}
         }
         cancellation = next
@@ -268,6 +278,8 @@ final class CloudSync: NSObject, CKSyncEngineDelegate {
             }
             guard permitsWork(generation: generation, engine: engine) else { return }
             if missingKnownZone { try requireZoneRecovery() }
+            try await catchUpKnownZone(engine)
+            guard permitsWork(generation: generation, engine: engine) else { return }
             if zoneState == .joining { try setZoneState(.existing) }
             try await repairMissingAttachments(from: engine)
             guard permitsWork(generation: generation, engine: engine) else { return }
@@ -385,6 +397,9 @@ final class CloudSync: NSObject, CKSyncEngineDelegate {
         if recovering {
             try store.requeueReplica()
             if hadCursor { try FileManager.default.removeItem(at: stateURL) }
+            if FileManager.default.fileExists(atPath: zoneCursorURL.path) {
+                try FileManager.default.removeItem(at: zoneCursorURL)
+            }
         }
         try setZoneState(knownZone ? .existing : zoneExists ? .joining : .creating, owner: account)
         defaults.set(account, forKey: "aauv.cloud.owner")
@@ -393,6 +408,18 @@ final class CloudSync: NSObject, CKSyncEngineDelegate {
         let engine = CKSyncEngine(config)
         self.database = database
         self.engine = engine
+        zoneCatchUp = CloudZoneCatchUp(file: zoneCursorURL, owner: account,
+                                      scope: Self.containerID + "/" + zoneID.zoneName,
+                                      permitted: { [weak self] in self?.permitsWork(generation: generation, engine: engine) ?? false },
+                                      fetch: { [zoneID] token in
+                                          try await CloudZoneCatchUp.fetch(database: database, zone: zoneID, token: token)
+                                      }, apply: { [weak self] page in
+                                          guard let self, self.permitsWork(generation: generation, engine: engine) else { throw CancellationError() }
+                                          let removed = try self.receiveDeletions(page.deletions)
+                                          try await self.receive(page.records, from: engine)
+                                          guard self.permitsWork(generation: generation, engine: engine) else { throw CancellationError() }
+                                          if self.ready, removed { try self.enqueue(engine) }
+                                      })
         missingKnownZone = knownZone && !zoneExists
         if !zoneExists && !missingKnownZone {
             engine.state.add(pendingDatabaseChanges: [.saveZone(CKRecordZone(zoneID: zoneID))])
@@ -431,12 +458,35 @@ final class CloudSync: NSObject, CKSyncEngineDelegate {
         try uploadDeferrals.removeObsolete(using: store.pendingReplicaRevision)
         let count = try store.pendingReplicaCount()
         if count == 0 {
-            status = "iCloud 记录已同步"
+            status = "本机没有待上传记录"
         } else if let issue = uploadDeferrals.issue {
             status = "等待同步 \(count) 条记录。\(issue) 可点「立即同步」重试。"
         } else {
             status = "等待同步 \(count) 条记录"
         }
+    }
+
+    private func catchUpKnownZone(_ engine: CKSyncEngine) async throws {
+        guard permitsWork(engine: engine), !missingKnownZone,
+              zoneState == .existing || zoneState == .joining, let zoneCatchUp else { return }
+        do { try await zoneCatchUp.run() }
+        catch let error as CKError where Self.isMissingZone(error) {
+            guard permitsWork(engine: engine) else { throw CancellationError() }
+            try requireZoneRecovery()
+        }
+        guard permitsWork(engine: engine) else { throw CancellationError() }
+        lastCheckCompletedAt = Date()
+    }
+
+    private func receiveDeletions(_ ids: [CKRecord.ID]) throws -> Bool {
+        var removed = false
+        for id in ids where id.zoneID == zoneID {
+            systemFields.removeValue(forKey: id.recordName)
+            try store.requeueReplicaRecord(id.recordName)
+            removed = true
+        }
+        if removed { lastRemoteUpdateAt = Date() }
+        return removed
     }
 
     private func postponeUpload(_ id: CKRecord.ID, revision: String?, message: String, in syncEngine: CKSyncEngine) throws {
@@ -503,17 +553,18 @@ final class CloudSync: NSObject, CKSyncEngineDelegate {
                     if !deletions.isEmpty { try requireZoneRecovery() }
                 }
             case .fetchedRecordZoneChanges(let changes):
-                var removedRecord = false
-                for item in changes.deletions where item.recordID.zoneID == zoneID {
-                    let name = item.recordID.recordName
-                    systemFields.removeValue(forKey: name)
-                    try store.requeueReplicaRecord(name)
-                    removedRecord = true
-                }
+                let removedRecord = try receiveDeletions(changes.deletions.map(\.recordID))
                 let records = changes.modifications.map(\.record).filter { $0.recordID.zoneID == zoneID }
                 try await receive(records, from: syncEngine)
                 guard permitsWork(engine: syncEngine) else { return }
                 if ready, removedRecord { try enqueue(syncEngine) }
+            case .didFetchChanges:
+                // Scheduled engine checks also repair a missed database-change
+                // discovery, using the same durable zone cursor as manual sync.
+                if !busy, ready {
+                    try await catchUpKnownZone(syncEngine)
+                    try updateStatus()
+                }
             case .didFetchRecordZoneChanges(let result):
                 guard result.zoneID == zoneID else { return }
                 if let error = result.error {
@@ -694,6 +745,7 @@ final class CloudSync: NSObject, CKSyncEngineDelegate {
             remaining = remaining.dropFirst(prepared.count)
         }
         if let rejected { throw rejected }
+        if !records.isEmpty { lastRemoteUpdateAt = Date() }
     }
 
     private func remember(_ record: CKRecord) {

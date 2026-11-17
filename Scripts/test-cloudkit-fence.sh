@@ -26,7 +26,7 @@ if [ "$#" -eq 0 ]; then
 fi
 for test_case do
   case "$test_case" in
-    CloudSyncConfigurationFenceTests|CloudSyncRunIntentTests|CloudSyncReconcileLivenessTests|ConfigurationRecoveryTests|ConfigurationImportTests|ReplicaRecoveryTests) ;;
+    CloudSyncConfigurationFenceTests|CloudSyncRunIntentTests|CloudSyncReconcileLivenessTests|CloudSyncForegroundTests|CloudZoneCatchUpTests|ConfigurationRecoveryTests|ConfigurationImportTests|ReplicaRecoveryTests) ;;
     *) echo 'Only the cloud/configuration fence native fixtures are allowed.' >&2; exit 2 ;;
   esac
   xcrun swiftc -target "$(uname -m)-apple-macosx14.0" \
