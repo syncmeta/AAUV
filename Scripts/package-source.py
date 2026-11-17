@@ -17,7 +17,7 @@ from zipfile import ZipFile
 ROOT = Path(__file__).resolve().parent.parent
 LOCK = "AAUV.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
 SOURCE_FILES = (
-    ".gitignore", "LICENSE", "README.md", "THIRD_PARTY.md", "project.yml", "Info.plist",
+    ".gitignore", "LICENSE", "README.md", "README.en.md", "THIRD_PARTY.md", "project.yml", "Info.plist",
     "ShareInfo.plist", "TunnelInfo.plist", "AAUV-App-iOS.entitlements",
     "AAUV-App-macOS.entitlements", "AAUV-Share-iOS.entitlements", "AAUV-iOS.entitlements", LOCK,
 )
@@ -26,6 +26,7 @@ SOURCE_DIRS = {
     "Scripts": {".sh", ".py"}, "Resources": {".json", ".png", ".strings", ".svg", ".txt"},
     "Licenses": {".txt"},
     "copilot/nativeauth": {".go"},
+    "docs/screenshots": {".png"},
 }
 OFFLINE_GO = dict(os.environ, GOPROXY="off", GOSUMDB="off", GOWORK="off", GOTOOLCHAIN="local",
                   GOCACHE=str(ROOT / "build/go-cache"))

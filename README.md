@@ -12,6 +12,8 @@
 
 ![AAUV 在 macOS 上的聊天界面](docs/screenshots/macos-chat.png)
 
+这也算是我另一个项目 [PendingBot](https://github.com/syncmeta/PendingBot) 的单机版。
+
 README我晚些时候详细写，最近其它事情有点多。以下是AI写的。
 
 ## 登录入口

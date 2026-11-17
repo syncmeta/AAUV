@@ -2,7 +2,7 @@
 
 [简体中文](README.md) | **English**
 
-An AI client with a layout much like WeChat. It includes a sing-box client (commonly called a VPN); bring your own proxy node.
+An AI client with a layout much like WeChat. It includes a sing-box client for bypassing internet restrictions; bring your own proxy node.
 
 Why use it? There isn't really a compelling reason, and this isn't a commercial product. I made it because:
 
@@ -11,6 +11,8 @@ Why use it? There isn't really a compelling reason, and this isn't a commercial 
 - It supports BYOK, so you can use any provider. There are plenty of products like this, but mine aims to feel a little friendlier and easier to understand: fewer technical features, more support for the human side. If technical features are what you're after, just use Cherry Studio.
 
 ![AAUV chat interface on macOS](docs/screenshots/macos-chat.png)
+
+You could also think of it as a standalone version of my other project, [PendingBot](https://github.com/syncmeta/PendingBot).
 
 I'll write a more detailed README later; I have a lot of other things going on at the moment. The rest below was written by AI.
 
