@@ -239,3 +239,7 @@
 "个人资料或模型目录暂未同步，本机记录已保留。" = "Your profile or model catalog could not be synced yet. Your local data has been preserved.";
 "个人资料或模型目录已变化，请稍后重试。" = "Your profile or model catalog has changed. Please try again.";
 "开启 iCloud 同步：确认后会按当前系统 iCloud 账户同步会话、附件、机器人、提示词、个人资料及保存的服务和模型列表；登录凭证保留在本机。" = "Enable iCloud sync: after confirmation, conversations, attachments, bots, prompts, your profile, and saved services and models will sync using the current system iCloud account. Sign-in credentials stay on this device.";
+"这些服务、机器人或会话使用的 ChatGPT 连接尚未在此设备授权。授权后保留原有注册和同步记录。" = "These services, bots or chats use ChatGPT connections that are not authorized on this device. Authorization keeps their existing registrations and synced records.";
+"关联 %lld 个服务、%lld 个机器人、%lld 个会话" = "Used by %lld services, %lld bots and %lld chats";
+"无法读取同步的模型服务，暂不能为同步连接授权。请修复目录后重试。" = "The synced model services could not be read. Fix the catalog and retry before authorizing a synced connection.";
+"重新检查同步连接" = "Check synced connections again";

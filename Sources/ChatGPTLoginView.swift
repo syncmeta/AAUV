@@ -15,6 +15,9 @@ struct ChatGPTLoginSection: View {
 
     let proxy: SingBox
     let referencedRegistrations: [SyncedChatGPTEnrollment.Reference]
+    let referenceLoadError: String?
+    let referenceProvider: (@MainActor () throws -> [SyncedChatGPTEnrollment.Reference])?
+    @State private var referenceReadFailure: String?
     @AppStorage(ChatGPTPlanSession.selectionKey) private var registration = ""
     @AppStorage(ChatGPTPlanSession.usagePauseKey) private var usagePauseState = Data()
     @AppStorage(APIKey.revisionKey) private var credentialRevision = ""
@@ -45,9 +48,13 @@ struct ChatGPTLoginSection: View {
     @State private var waitingForBrowser = false
     #endif
 
-    init(proxy: SingBox, referencedRegistrations: [SyncedChatGPTEnrollment.Reference] = []) {
+    init(proxy: SingBox, referencedRegistrations: [SyncedChatGPTEnrollment.Reference] = [],
+         referenceLoadError: String? = nil,
+         referenceProvider: (@MainActor () throws -> [SyncedChatGPTEnrollment.Reference])? = nil) {
         self.proxy = proxy
         self.referencedRegistrations = referencedRegistrations
+        self.referenceLoadError = referenceLoadError
+        self.referenceProvider = referenceProvider
     }
 
     private var knownLocalRegistrations: Set<String>? {
@@ -135,11 +142,19 @@ struct ChatGPTLoginSection: View {
                 .disabled(!planEnabled)
                 Text("网页搜索是否可用取决于模型和账号策略。").font(.footnote)
             }
+            if let issue = referenceLoadError ?? referenceReadFailure {
+                Text(issue).font(.footnote)
+                Button("重新检查同步连接") {
+                    do { _ = try referenceProvider?(); referenceReadFailure = nil }
+                    catch { referenceReadFailure = String(localized: "无法读取同步的模型服务，暂不能为同步连接授权。请修复目录后重试。") }
+                }
+                .disabled(task != nil)
+            }
             if let missing = SyncedChatGPTEnrollment.missingReferences(referencedRegistrations,
                                                                       knownLocalRegistrations: knownLocalRegistrations),
                !missing.isEmpty {
                 DisclosureGroup("在此设备使用同步的 ChatGPT 连接") {
-                    Text("这些机器人或会话使用的 ChatGPT 连接尚未在此设备授权。授权后保留原有注册和同步记录。")
+                    Text("这些服务、机器人或会话使用的 ChatGPT 连接尚未在此设备授权。授权后保留原有注册和同步记录。")
                         .font(.footnote)
                     Text("请使用会话原来的同一 ChatGPT 用户和工作区完成授权。")
                         .font(.footnote)
@@ -147,18 +162,27 @@ struct ChatGPTLoginSection: View {
                         VStack(alignment: .leading, spacing: 6) {
                             if let name = reference.displayName { Text(name).font(.headline) }
                             else { Text("同步的 ChatGPT 连接").font(.headline) }
-                            Text("关联 \(reference.botCount) 个机器人、\(reference.conversationCount) 个会话").font(.footnote)
+                            Text("关联 \(reference.serviceCount) 个服务、\(reference.botCount) 个机器人、\(reference.conversationCount) 个会话").font(.footnote)
                             if !reference.conversationTitles.isEmpty {
                                 Text(reference.conversationTitles.prefix(2).joined(separator: " · ")).font(.footnote)
                             }
                             Button("为此设备授权") {
-                                guard let client = SyncedChatGPTEnrollment.requestedClientID(
-                                    reference.clientID, references: referencedRegistrations,
-                                    knownLocalRegistrations: knownLocalRegistrations
-                                ) else { return }
-                                signIn(newRegistration: false, requestConsent: true, resuming: client)
+                                do {
+                                    let client: String?
+                                    if let referenceProvider {
+                                        client = try SyncedChatGPTEnrollment.requestedClientID(reference.clientID,
+                                            knownLocalRegistrations: knownLocalRegistrations, latestReferences: referenceProvider)
+                                    } else {
+                                        client = SyncedChatGPTEnrollment.requestedClientID(reference.clientID,
+                                            references: referencedRegistrations, knownLocalRegistrations: knownLocalRegistrations)
+                                    }
+                                    guard let client else { return }
+                                    signIn(newRegistration: false, requestConsent: true, resuming: client)
+                                } catch {
+                                    referenceReadFailure = String(localized: "无法读取同步的模型服务，暂不能为同步连接授权。请修复目录后重试。")
+                                }
                             }
-                            .disabled(task != nil)
+                            .disabled(task != nil || referenceLoadError != nil || referenceReadFailure != nil)
                         }
                         .padding(.vertical, 4)
                     }

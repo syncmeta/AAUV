@@ -60,6 +60,45 @@ struct SyncedChatGPTEnrollmentTests {
         let unchangedChats = try encoder.encode(chats)
         precondition(originalBots == unchangedBots && originalChats == unchangedChats)
 
+        // A model catalog can arrive before any bot/chat, without credentials.
+        let serviceOnlyID = "oaiapp_service_only"
+        let catalog = ModelService(name: "Synced service", loginMethod: .chatgpt,
+                                   endpoint: "https://api.openai.com/v1", chatGPTClientID: serviceOnlyID,
+                                   models: [ServiceModel(id: "synthetic-model")])
+        let serviceOnly = try SyncedChatGPTEnrollment.references(bots: [], conversations: [], services: [catalog])
+        precondition(serviceOnly.count == 1 && serviceOnly[0].clientID == serviceOnlyID)
+        precondition(serviceOnly[0].serviceCount == 1 && serviceOnly[0].botCount == 0 && serviceOnly[0].conversationCount == 0)
+        precondition(serviceOnly[0].displayName == "Synced service")
+        var sharedService = catalog; sharedService.chatGPTClientID = a
+        let mixed = try SyncedChatGPTEnrollment.references(bots: bots, conversations: chats, services: [sharedService, catalog])
+        precondition(mixed.filter { $0.clientID == a }.count == 1)
+        precondition(mixed.first { $0.clientID == a }!.serviceCount == 1)
+        precondition(mixed.first { $0.clientID == a }!.botCount == referenceA.botCount)
+        let byokService = ModelService(name: "BYOK", loginMethod: .byok, endpoint: "https://example.com/v1")
+        let excludedServices = try SyncedChatGPTEnrollment.references(bots: [], conversations: [], services: [byokService])
+        precondition(excludedServices.isEmpty)
+        var latestServices = [catalog]
+        func freshReferences() throws -> [SyncedChatGPTEnrollment.Reference] {
+            try SyncedChatGPTEnrollment.references(bots: [], conversations: [], services: latestServices)
+        }
+        let resumedService = try SyncedChatGPTEnrollment.requestedClientID(serviceOnlyID, knownLocalRegistrations: [a], latestReferences: freshReferences)
+        precondition(resumedService == serviceOnlyID) // Never substitute another local account.
+        latestServices = []
+        let staleDeleted = try SyncedChatGPTEnrollment.requestedClientID(serviceOnlyID, knownLocalRegistrations: [], latestReferences: freshReferences)
+        precondition(staleDeleted == nil) // Click must re-read, not trust the shown row.
+        latestServices = [sharedService]
+        let staleReplaced = try SyncedChatGPTEnrollment.requestedClientID(serviceOnlyID, knownLocalRegistrations: [], latestReferences: freshReferences)
+        precondition(staleReplaced == nil)
+        var damaged = catalog; damaged.chatGPTClientID = "invalid_registration"
+        latestServices = [damaged]
+        do {
+            _ = try SyncedChatGPTEnrollment.requestedClientID(serviceOnlyID, knownLocalRegistrations: [], latestReferences: freshReferences)
+            preconditionFailure("A damaged catalog must surface an error, not an empty registry or stale authorization target")
+        } catch { }
+        latestServices = [catalog]
+        let unknownCredentials = try SyncedChatGPTEnrollment.requestedClientID(serviceOnlyID, knownLocalRegistrations: nil, latestReferences: freshReferences)
+        precondition(unknownCredentials == nil)
+
         let directory = try PrivateTemporaryDirectory()
         let storeA = ConversationStore(file: directory.url.appending(path: "a/conversations.json"))
         let storeB = ConversationStore(file: directory.url.appending(path: "b/conversations.json"))

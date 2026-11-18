@@ -9,9 +9,18 @@ enum SyncedChatGPTEnrollment {
         let conversationTitles: [String]
         let botCount: Int
         let conversationCount: Int
+        let serviceNames: [String]
+        let serviceCount: Int
+
+        init(clientID: String, botNames: [String], conversationTitles: [String], botCount: Int,
+             conversationCount: Int, serviceNames: [String] = [], serviceCount: Int = 0) {
+            self.clientID = clientID; self.botNames = botNames; self.conversationTitles = conversationTitles
+            self.botCount = botCount; self.conversationCount = conversationCount
+            self.serviceNames = serviceNames; self.serviceCount = serviceCount
+        }
 
         var id: String { clientID }
-        var displayName: String? { botNames.first ?? conversationTitles.first }
+        var displayName: String? { botNames.first ?? serviceNames.first ?? conversationTitles.first }
     }
 
     private struct Usage {
@@ -19,9 +28,21 @@ enum SyncedChatGPTEnrollment {
         var conversations: Set<UUID> = []
         var botNames: Set<String> = []
         var conversationTitles: Set<String> = []
+        var services: Set<String> = []
+        var serviceNames: Set<String> = []
     }
 
     static func references(bots: [LocalBot], conversations: [Conversation]) -> [Reference] {
+        collect(bots: bots, conversations: conversations, services: [])
+    }
+
+    // A damaged synced catalog is unknown, not an empty collection. Callers
+    // must surface this error instead of offering a stale enrollment action.
+    static func references(bots: [LocalBot], conversations: [Conversation], services: [ModelService]) throws -> [Reference] {
+        collect(bots: bots, conversations: conversations, services: try ModelService.validateBatch(services))
+    }
+
+    private static func collect(bots: [LocalBot], conversations: [Conversation], services: [ModelService]) -> [Reference] {
         var usage: [String: Usage] = [:]
         func clientID(_ bot: BotSnapshot?) -> String? {
             guard let bot, bot.loginMethod == .chatgpt, let id = bot.chatGPTClientID,
@@ -43,9 +64,16 @@ enum SyncedChatGPTEnrollment {
             if let name = name(conversation.title) { usage[id, default: Usage()].conversationTitles.insert(name) }
             if let name = conversation.bot.flatMap({ name($0.name) }) { usage[id, default: Usage()].botNames.insert(name) }
         }
+        for service in services {
+            guard service.loginMethod == .chatgpt, let id = service.chatGPTClientID,
+                  APIKey.isNativeRegistrationID(id) else { continue }
+            usage[id, default: Usage()].services.insert(service.id)
+            if let name = name(service.name) { usage[id, default: Usage()].serviceNames.insert(name) }
+        }
         return usage.map { id, usage in
             Reference(clientID: id, botNames: usage.botNames.sorted(), conversationTitles: usage.conversationTitles.sorted(),
-                      botCount: usage.bots.count, conversationCount: usage.conversations.count)
+                      botCount: usage.bots.count, conversationCount: usage.conversations.count,
+                      serviceNames: usage.serviceNames.sorted(), serviceCount: usage.services.count)
         }.sorted { lhs, rhs in
             let left = lhs.displayName ?? ""
             let right = rhs.displayName ?? ""
@@ -67,5 +95,10 @@ enum SyncedChatGPTEnrollment {
               missingReferences(references, knownLocalRegistrations: knownLocalRegistrations)?.contains(where: { $0.clientID == id }) == true
         else { return nil }
         return id
+    }
+
+    @MainActor static func requestedClientID(_ id: String, knownLocalRegistrations: Set<String>?,
+                                            latestReferences: @MainActor () throws -> [Reference]) throws -> String? {
+        requestedClientID(id, references: try latestReferences(), knownLocalRegistrations: knownLocalRegistrations)
     }
 }

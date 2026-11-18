@@ -18,6 +18,7 @@ struct SettingsView: View {
     @AppStorage("model") private var model = ""
     @AppStorage("apiProtocol") private var apiProtocol = "responses"
     @AppStorage(APIKey.revisionKey) private var credentialRevision = ""
+    @AppStorage(ModelServices.storageKey) private var storedModelServices = Data()
     @AppStorage("loginMethod") private var loginMethod = LoginMethod.byok.rawValue
     @AppStorage("contextThreshold") private var contextThreshold = 100000
     @AppStorage("contextHours") private var contextHours = 24
@@ -99,14 +100,26 @@ struct SettingsView: View {
         }
     }
 
+    private func currentChatGPTReferences() throws -> [SyncedChatGPTEnrollment.Reference] {
+        try SyncedChatGPTEnrollment.references(bots: store.bots, conversations: store.conversations,
+                                               services: ModelServices.load())
+    }
+
+    private var syncedChatGPTReferences: (values: [SyncedChatGPTEnrollment.Reference], error: String?) {
+        _ = storedModelServices // Catalog sync/edit invalidates this view snapshot.
+        do { return (try currentChatGPTReferences(), nil) }
+        catch { return ([], String(localized: "无法读取同步的模型服务，暂不能为同步连接授权。请修复目录后重试。")) }
+    }
+
     private var settingsForm: some View {
         Form {
                 if shows(.providers) {
                     Group {
                     Section("登录") {
-                        ChatGPTLoginSection(proxy: proxy, referencedRegistrations: SyncedChatGPTEnrollment.references(
-                            bots: store.bots, conversations: store.conversations
-                        ))
+                        let references = syncedChatGPTReferences
+                        ChatGPTLoginSection(proxy: proxy, referencedRegistrations: references.values,
+                                            referenceLoadError: references.error,
+                                            referenceProvider: { try currentChatGPTReferences() })
                         GitHubCopilotLoginSection(proxy: proxy)
                     }
                     Section("模型服务") {
