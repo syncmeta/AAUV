@@ -160,6 +160,8 @@ xcodebuild -project AAUV.xcodeproj -scheme AAUV_iOS \
 
 Realtime 语音会话只提供 `hang_up` 挂断工具。模型在完整成功的当前响应中提出挂断后，AAUV 等待已收到音频的实际播放完成，保存最终转录和用量，再关闭连接和麦克风。用户插话、新响应或手动结束可取消等待；取消、不完整响应和旧调用不能触发工具。普通聊天的五项本机工具不进入语音会话。`RealtimeVoiceTests` 使用真实本机 WebSocket 模拟服务，`VoiceRunToolTests` 使用假音频及传输检查整条生命周期，不访问麦克风或模型账号。[OpenAI Realtime 事件参考](https://developers.openai.com/api/reference/resources/realtime/server-events)
 
+日常 Mac 构建可运行 `Scripts/build-macos.sh`，固定复用 `build/mac`、Swift 依赖和缓存。该入口与打包脚本共用构建锁；另一项任务正在使用目录时退出并提示，不会并行写入同一产物。验收日志和测试数据可按批次另存，避免复制整套 DerivedData 和依赖目录。
+
 准备好双架构内核与核心框架，并执行 `Scripts/build-copilot.sh all` 后，可用 `Scripts/package-macos.sh` 生成 `build/dist/AAUV-macOS-local.zip`。压缩包包含 Apple Silicon 与 Intel 通用的 Release 应用和对应源码包，使用本机临时签名。Copilot 官方运行时保留上游签名与原始字节。本地测试包尚未公证，iCloud 同步需要另行配置开发团队与容器签名能力。缺少这些能力时，应用会在同步设置中提示。
 
 设置 `AAUV_MAC_SIGNING_IDENTITY` 为本机证书名称或 SHA-1，可用同一脚本生成开发签名包。例如 `AAUV_MAC_SIGNING_IDENTITY='Apple Development: YOUR NAME (TEAMID)' Scripts/package-macos.sh build/dist/AAUV-macOS-development.zip`。打包脚本和启用签名的普通 Xcode 构建都会为 AAUV 自有代码与代理内核签名，保留 Copilot 官方运行时的上游签名。开发签名包仍需匹配的描述文件才能使用 iCloud。
